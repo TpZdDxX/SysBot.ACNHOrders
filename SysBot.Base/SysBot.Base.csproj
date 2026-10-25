@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Decompiled from the prebuilt deps/SysBot.Base.dll this repo used to ship, originally from kwsch/SysBot.NET (AGPL-3.0) -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 3.x is a different API, so moving to it means rewriting SwitchUSB -->
+    <PackageReference Include="LibUsbDotNet" Version="2.2.85" />
+    <PackageReference Include="NLog" Version="6.2.2" />
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <!-- SkiaSharp only bundles Windows and macOS natives, this covers the linux-arm64 build -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
+  </ItemGroup>
+
+</Project>

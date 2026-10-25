@@ -35,10 +35,10 @@ namespace SysBot.ACNHOrders
         ///<summary>Throttle the bot from sending messages if X messages have been sent in the past Y seconds.</summary>
         public double ThrottleSeconds { get; set; } = 30;
 
-        ///<summary>Throttle the bot from sending whispers if X messages have been sent in the past Y seconds.</summary>
+        ///<summary>Unused: Twitch no longer delivers whispers sent by bots over chat.</summary>
         public int ThrottleWhispers { get; set; } = 100;
 
-        ///<summary>Throttle the bot from sending whispers if X messages have been sent in the past Y seconds.</summary>
+        ///<summary>Unused: Twitch no longer delivers whispers sent by bots over chat.</summary>
         public double ThrottleWhispersSeconds { get; set; } = 60;
 
         // Operation
@@ -108,6 +108,7 @@ namespace SysBot.ACNHOrders
     {
         Disabled,
         Channel,
+        /// <summary>Not delivered: Twitch no longer accepts whispers sent by bots over chat. The message is logged instead.</summary>
         Whisper,
     }
 }

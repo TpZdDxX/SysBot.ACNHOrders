@@ -8,9 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Tests\**" />
-    <EmbeddedResource Remove="Tests\**" />
-    <None Remove="Tests\**" />
+    <Compile Remove="Tests\**;SysBot.Base\**" />
+    <EmbeddedResource Remove="Tests\**;SysBot.Base\**" />
+    <None Remove="Tests\**;SysBot.Base\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,15 +24,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Discord.Net" Version="3.16.0" />
-    <PackageReference Include="Discord.Net.Core" Version="3.16.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
-    <PackageReference Include="NLog" Version="4.7.6" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.12" />
-    <PackageReference Include="SixLabors.Fonts" Version="1.0.0-beta0013" />
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="1.0.0-beta11" />
-    <PackageReference Include="TwitchLib.Client" Version="3.2.1" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.2" />
+    <PackageReference Include="Discord.Net" Version="3.20.2" />
+    <PackageReference Include="Discord.Net.Core" Version="3.20.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+    <PackageReference Include="TwitchLib.Client" Version="4.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,18 +38,14 @@
     <Reference Include="NHSE.Villagers">
       <HintPath>deps\NHSE.Villagers.dll</HintPath>
     </Reference>
-    <Reference Include="SysBot.Base">
-      <HintPath>deps\SysBot.Base.dll</HintPath>
-    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="SysBot.Base\SysBot.Base.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Bot\Injection\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include=".github\upgrades\plan.md" />
-    <None Include=".github\upgrades\tasks.md" />
   </ItemGroup>
 
 </Project>

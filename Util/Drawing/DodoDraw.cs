@@ -1,9 +1,5 @@
-﻿using System;
-using SixLabors.ImageSharp;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.Processing;
-using System.IO;
+﻿using System.IO;
+using SkiaSharp;
 
 namespace SysBot.ACNHOrders
 {
@@ -13,38 +9,31 @@ namespace SysBot.ACNHOrders
         private string FontPath { get; set; } = "dodo.ttf";
         private string ImagePathOutput => "current" + ImagePathTemplate;
 
-        private readonly FontCollection FontCollection = new();
-        private readonly FontFamily DodoFontFamily;
-        private readonly Font DodoFont;
-        private readonly Image BaseImage;
-
-        private readonly TextOptions options;
-        private readonly TextGraphicsOptions tOptions;
+        private readonly SKBitmap BaseImage;
+        private readonly SKFont DodoFont;
 
         public DodoDraw(float fontPercentage = 100)
         {
-            DodoFontFamily = FontCollection.Install(FontPath);
-            BaseImage = Image.Load(ImagePathTemplate);
-            DodoFont = DodoFontFamily.CreateFont(BaseImage.Height * 0.4f * (fontPercentage/100f), FontStyle.Regular);
-
-            options = new TextOptions()
-            {
-                ApplyKerning = true,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            tOptions = new TextGraphicsOptions()
-            {
-                TextOptions = options
-            };
+            BaseImage = SKBitmap.Decode(ImagePathTemplate) ?? throw new IOException($"Unable to load {ImagePathTemplate}");
+            var typeface = SKTypeface.FromFile(FontPath) ?? throw new IOException($"Unable to load {FontPath}");
+            DodoFont = new SKFont(typeface, BaseImage.Height * 0.4f * (fontPercentage/100f));
         }
 
         public string Draw(string dodo)
         {
-            using (var img = BaseImage.Clone(x => x.DrawText(tOptions, dodo, DodoFont, Color.White, new PointF(BaseImage.Width * 0.5f, BaseImage.Height * 0.38f))))
+            using var img = BaseImage.Copy();
+            using (var canvas = new SKCanvas(img))
+            using (var paint = new SKPaint { Color = SKColors.White, IsAntialias = true })
             {
-                img.Save(ImagePathOutput);
+                // Centre the line vertically on the point, not just the glyphs
+                var baseline = BaseImage.Height * 0.38f - (DodoFont.Metrics.Ascent + DodoFont.Metrics.Descent) / 2;
+                canvas.DrawText(dodo, BaseImage.Width * 0.5f, baseline, SKTextAlign.Center, DodoFont, paint);
+            }
+
+            using (var data = img.Encode(SKEncodedImageFormat.Png, 100))
+            using (var file = File.Create(ImagePathOutput))
+            {
+                data.SaveTo(file);
             }
 
             return ImagePathOutput;

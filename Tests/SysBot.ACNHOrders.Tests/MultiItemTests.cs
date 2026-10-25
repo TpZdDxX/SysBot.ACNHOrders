@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using Xunit;
-using FluentAssertions;
 using NHSE.Core;
 
 namespace SysBot.ACNHOrders.Tests
@@ -16,13 +15,13 @@ namespace SysBot.ACNHOrders.Tests
         public static void TestDuplicateVariation(string name, ulong itemValueParse)
         {
             var items = ItemParser.GetItemsFromUserInput(itemValueParse.ToString("X"), new DropBotConfig(), ItemDestination.PlayerDropped);
-            items.Count.Should().Be(1);
+            Assert.Single(items);
             
             var currentItem = items.ElementAt(0);
             var multiItem = new MultiItem(new Item[1] { currentItem });
 
             var itemName = GameInfo.Strings.GetItemName(currentItem);
-            itemName.Should().StartWith(name);
+            Assert.StartsWith(name, itemName);
 
             // variations
             var remake = ItemRemakeUtil.GetRemakeIndex(currentItem.ItemId);
@@ -35,10 +34,10 @@ namespace SysBot.ACNHOrders.Tests
                 if (!bodyVariations[0].StartsWith("0"))
                     varCount++;
 
-                multiItem.ItemArray.Items[0].ItemId.Should().Be(currentItem.ItemId);
-                multiItem.ItemArray.Items[1].Count.Should().Be(1);
-                multiItem.ItemArray.Items[varCount].ItemId.Should().Be(currentItem.ItemId);
-                multiItem.ItemArray.Items[varCount].Count.Should().Be(0);
+                Assert.Equal(currentItem.ItemId, multiItem.ItemArray.Items[0].ItemId);
+                Assert.Equal(1, multiItem.ItemArray.Items[1].Count);
+                Assert.Equal(currentItem.ItemId, multiItem.ItemArray.Items[varCount].ItemId);
+                Assert.Equal(0, multiItem.ItemArray.Items[varCount].Count);
 
                 foreach (var itm in multiItem.ItemArray.Items)
                 {
@@ -46,7 +45,7 @@ namespace SysBot.ACNHOrders.Tests
                     if (itm.IsNone)
                         continue;
                     var itmName = GameInfo.Strings.GetItemName(itm);
-                    itemName.Should().Be(itmName);
+                    Assert.Equal(itmName, itemName);
                 }
             }
 
@@ -57,14 +56,14 @@ namespace SysBot.ACNHOrders.Tests
                 foreach (var asoc in multiItem.ItemArray.Items)
                 {
                     var asocName = GameInfo.Strings.GetItemName(asoc);
-                    asocName.Should().EndWith(")");
+                    Assert.EndsWith(")", asocName);
                 }
             }
 
             // everything else
             if (currentItem.ItemId == Item.DIYRecipe)
                 foreach (var itm in multiItem.ItemArray.Items)
-                    itm.ItemId.Should().Be(Item.DIYRecipe);
+                    Assert.Equal(Item.DIYRecipe, itm.ItemId);
         }
     }
 }

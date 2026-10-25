@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SysBot.ACNHOrders", "SysBot
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SysBot.ACNHOrders.Tests", "Tests\SysBot.ACNHOrders.Tests\SysBot.ACNHOrders.Tests.csproj", "{7B499373-63D1-4528-B0C4-65902F7B7954}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SysBot.Base", "SysBot.Base\SysBot.Base.csproj", "{70BE2815-0585-4DF6-A31E-1AB580922E02}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{7B499373-63D1-4528-B0C4-65902F7B7954}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7B499373-63D1-4528-B0C4-65902F7B7954}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7B499373-63D1-4528-B0C4-65902F7B7954}.Release|Any CPU.Build.0 = Release|Any CPU
+		{70BE2815-0585-4DF6-A31E-1AB580922E02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{70BE2815-0585-4DF6-A31E-1AB580922E02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{70BE2815-0585-4DF6-A31E-1AB580922E02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{70BE2815-0585-4DF6-A31E-1AB580922E02}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

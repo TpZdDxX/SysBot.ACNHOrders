@@ -11,7 +11,7 @@ using System.Text;
 using System.IO;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace SysBot.ACNHOrders
 {
@@ -60,7 +60,7 @@ namespace SysBot.ACNHOrders
 
         public VillagerHelper Villagers { get; private set; } = VillagerHelper.Empty;
 
-        private readonly RegionScreenshotComparer LoadingScreenPixelComparer = new RegionScreenshotComparer(274, 24, 1, 1, new Rgba32(2, 2, 2, 255), 2);
+        private readonly RegionScreenshotComparer LoadingScreenPixelComparer = new RegionScreenshotComparer(274, 24, 1, 1, new SKColor(2, 2, 2, 255), 2);
 
         public ISwitchConnectionAsync SwitchConnectedConnection => SwitchConnection;
 

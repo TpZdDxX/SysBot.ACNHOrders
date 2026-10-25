@@ -73,10 +73,10 @@ namespace SysBot.ACNHOrders.Twitch
             switch (dest)
             {
                 case TwitchMessageDestination.Channel:
-                    Client.SendMessage(Channel, message);
+                    TwitchCrossBot.SendMessage(Client, Channel, message);
                     break;
                 case TwitchMessageDestination.Whisper:
-                    Client.SendWhisper(Trader, message);
+                    TwitchCrossBot.LogWhisperUnsupported(Trader);
                     break;
             }
         }

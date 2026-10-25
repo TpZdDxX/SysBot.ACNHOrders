@@ -1,16 +1,12 @@
 ﻿using NHSE.Core;
 using SysBot.Base;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TwitchLib.Client;
 using TwitchLib.Client.Events;
 using TwitchLib.Client.Models;
-using TwitchLib.Communication.Clients;
-using TwitchLib.Communication.Events;
-using TwitchLib.Communication.Models;
 
 namespace SysBot.ACNHOrders.Twitch
 {
@@ -31,17 +27,9 @@ namespace SysBot.ACNHOrders.Twitch
 
             var credentials = new ConnectionCredentials(settings.Username.ToLower(), settings.Token);
 
-            var clientOptions = new ClientOptions
-            {
-                MessagesAllowedInPeriod = settings.ThrottleMessages,
-                ThrottlingPeriod = TimeSpan.FromSeconds(settings.ThrottleSeconds),
-
-                WhispersAllowedInPeriod = settings.ThrottleWhispers,
-                WhisperThrottlingPeriod = TimeSpan.FromSeconds(settings.ThrottleWhispersSeconds),
-
-                // message queue capacity is managed (10_000 for message & whisper separately)
-                // message send interval is managed (50ms for each message sent)
-            };
+            // TwitchLib throttles over a fixed 30 second window, so scale the configured rate to it
+            var messagesPerWindow = settings.ThrottleSeconds > 0 ? settings.ThrottleMessages * 30 / settings.ThrottleSeconds : settings.ThrottleMessages;
+            var sendOptions = new SendOptions(sendsAllowedInPeriod: (uint)Math.Clamp(messagesPerWindow, 1, int.MaxValue));
 
             var lowerKeyDic = new Dictionary<string, string>();
             foreach (var kvp in settings.UserDefinitedCommands)
@@ -51,123 +39,157 @@ namespace SysBot.ACNHOrders.Twitch
             settings.UserDefinitedCommands = lowerKeyDic;
 
             Channel = settings.Channel;
-            WebSocketClient customClient = new(clientOptions);
-            client = new TwitchClient(customClient);
+            client = new TwitchClient(sendOptions: sendOptions);
 
-            var cmd = settings.CommandPrefix;
-            client.Initialize(credentials, Channel, cmd, cmd);
+            // Must be set before Initialize, which otherwise adds '!' as the prefix
+            var commandPrefix = settings.CommandPrefix.ToString();
+            client.ChatCommandIdentifiers.Add(commandPrefix);
+            client.WhisperCommandIdentifiers.Add(commandPrefix);
+            client.Initialize(credentials, Channel);
 
-            client.OnLog += Client_OnLog;
-            client.OnJoinedChannel += Client_OnJoinedChannel;
-            client.OnMessageReceived += Client_OnMessageReceived;
-            client.OnWhisperReceived += Client_OnWhisperReceived;
-            client.OnChatCommandReceived += Client_OnChatCommandReceived;
-            client.OnWhisperCommandReceived += Client_OnWhisperCommandReceived;
-            client.OnConnected += Client_OnConnected;
-            client.OnDisconnected += Client_OnDisconnected;
-            client.OnLeftChannel += Client_OnLeftChannel;
+            client.OnJoinedChannel += (_, e) => Safe(() => Client_OnJoinedChannel(e));
+            client.OnMessageReceived += (_, e) => Safe(() => Client_OnMessageReceived(e));
+            client.OnWhisperReceived += (_, e) => Safe(() => Client_OnWhisperReceived(e));
+            client.OnChatCommandReceived += (_, e) => Safe(() => Client_OnChatCommandReceived(e));
+            client.OnWhisperCommandReceived += (_, e) => Safe(() => Client_OnWhisperCommandReceived(e));
+            client.OnLeftChannel += (_, e) => Safe(() => Client_OnLeftChannel(e));
 
+            client.OnSendReceiveData += (_, e)
+                => Safe(() => LogUtil.LogText($"[{client.TwitchUsername}] - {e.Direction}: {e.Data}"));
+            client.OnConnected += (_, e)
+                => Safe(() => LogUtil.LogText($"[{client.TwitchUsername}] - Connected as {e.BotUsername}"));
+            // TwitchLib reconnects and rejoins channels by itself
+            client.OnDisconnected += (_, _)
+                => Safe(() => LogUtil.LogText($"[{client.TwitchUsername}] - Disconnected."));
+            client.OnReconnected += (_, _)
+                => Safe(() => LogUtil.LogText($"[{client.TwitchUsername}] - Reconnected."));
             client.OnMessageSent += (_, e)
-                => LogUtil.LogText($"[{client.TwitchUsername}] - Message Sent in {e.SentMessage.Channel}: {e.SentMessage.Message}");
-            client.OnWhisperSent += (_, e)
-                => LogUtil.LogText($"[{client.TwitchUsername}] - Whisper Sent to @{e.Receiver}: {e.Message}");
+                => Safe(() => LogUtil.LogText($"[{client.TwitchUsername}] - Message Sent in {e.SentMessage.Channel}: {e.SentMessage.Message}"));
 
             client.OnMessageThrottled += (_, e)
-                => LogUtil.LogError($"Message Throttled: {e.Message}", "TwitchBot");
-            client.OnWhisperThrottled += (_, e)
-                => LogUtil.LogError($"Whisper Throttled: {e.Message}", "TwitchBot");
+                => Safe(() => LogUtil.LogError($"Message Throttled: {e.Reason} {e.ItemNotSent.Message}", "TwitchBot"));
 
-            client.OnError += (_, e) =>
-                LogUtil.LogError(e.Exception.Message + Environment.NewLine + e.Exception.StackTrace, "TwitchBot");
-            client.OnConnectionError += (_, e) =>
-                LogUtil.LogError(e.BotUsername + Environment.NewLine + e.Error.Message, "TwitchBot");
+            client.OnError += (_, e)
+                => Safe(() => LogUtil.LogError(e.Exception.Message + Environment.NewLine + e.Exception.StackTrace, "TwitchBot"));
+            client.OnConnectionError += (_, e)
+                => Safe(() => LogUtil.LogError(e.BotUsername + Environment.NewLine + e.Error.Message, "TwitchBot"));
 
-            client.Connect();
+            Observe(client.ConnectAsync(), "Connecting to Twitch");
 
-            EchoUtil.Forwarders.Add(msg => client.SendMessage(Channel, msg));
+            EchoUtil.Forwarders.Add(msg => SendMessage(client, Channel, msg));
 
             // Turn on if verified
-            // Hub.Queues.Forwarders.Add((bot, detail) => client.SendMessage(Channel, $"{bot.Connection.Name} is now trading (ID {detail.ID}) {detail.Trainer.TrainerName}"));
+            // Hub.Queues.Forwarders.Add((bot, detail) => SendMessage(client, Channel, $"{bot.Connection.Name} is now trading (ID {detail.ID}) {detail.Trainer.TrainerName}"));
         }
 
-        private void Client_OnLog(object? sender, OnLogArgs e)
+        /// <summary>Sends a chat message without throwing; TwitchLib throws if no channel is joined yet.</summary>
+        internal static void SendMessage(TwitchClient client, string channel, string message)
         {
-            LogUtil.LogText($"[{client.TwitchUsername}] -[{e.BotUsername}] {e.Data}");
+            // Twitch's limit, TwitchLib drops longer messages without telling us
+            if (message.Length > 500)
+            {
+                LogUtil.LogError($"Message to {channel} is over 500 characters and was not sent: {message}", "TwitchBot");
+                return;
+            }
+
+            try
+            {
+                Observe(client.SendMessageAsync(channel, message), $"Sending to {channel}");
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Unable to send message to {channel}: {ex.Message}", "TwitchBot");
+            }
         }
 
-        private void Client_OnConnected(object? sender, OnConnectedArgs e)
+        internal static void LogWhisperUnsupported(string user)
+            => LogUtil.LogError($"Twitch no longer delivers whispers sent by bots, so the message to @{user} was not sent. Set this message destination to Channel in the Twitch config.", "TwitchBot");
+
+        // TwitchLib awaits handlers inside its receive loop, so an exception there would stop the bot hearing chat
+        private static Task Safe(Action action)
         {
-            LogUtil.LogText($"[{client.TwitchUsername}] - Connected {e.AutoJoinChannel} as {e.BotUsername}");
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError(ex.Message + Environment.NewLine + ex.StackTrace, "TwitchBot");
+            }
+            return Task.CompletedTask;
         }
 
-        private void Client_OnDisconnected(object? sender, OnDisconnectedEventArgs e)
+        private static void Observe(Task task, string operation)
+            => task.ContinueWith(failedTask => LogUtil.LogError($"{operation} failed: {failedTask.Exception?.GetBaseException().Message}", "TwitchBot"), TaskContinuationOptions.OnlyOnFaulted);
+
+        private void JoinChannel(string channel)
         {
-            LogUtil.LogText($"[{client.TwitchUsername}] - Disconnected.");
-            while (!client.IsConnected)
-                client.Reconnect();
+            try
+            {
+                Observe(client.JoinChannelAsync(channel), $"Joining {channel}");
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Unable to join {channel}: {ex.Message}", "TwitchBot");
+            }
         }
 
-        private void Client_OnJoinedChannel(object? sender, OnJoinedChannelArgs e)
+        private void Client_OnJoinedChannel(OnJoinedChannelArgs e)
         {
             LogUtil.LogInfo($"Joined {e.Channel}", e.BotUsername);
-            client.SendMessage(e.Channel, "Connected!");
+            SendMessage(client, e.Channel, "Connected!");
         }
 
-        private void Client_OnMessageReceived(object? sender, OnMessageReceivedArgs e)
+        private void Client_OnMessageReceived(OnMessageReceivedArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - Received message: @{e.ChatMessage.Username}: {e.ChatMessage.Message}");
             if (client.JoinedChannels.Count == 0)
-                client.JoinChannel(e.ChatMessage.Channel);
+                JoinChannel(e.ChatMessage.Channel);
         }
 
-        private void Client_OnLeftChannel(object? sender, OnLeftChannelArgs e)
+        private void Client_OnLeftChannel(OnLeftChannelArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - Left channel {e.Channel}");
-            client.JoinChannel(e.Channel);
+            JoinChannel(e.Channel);
         }
 
-        private void Client_OnChatCommandReceived(object? sender, OnChatCommandReceivedArgs e)
+        private void Client_OnChatCommandReceived(OnChatCommandReceivedArgs e)
         {
-            if (!Settings.AllowCommandsViaChannel || Settings.UserBlacklist.Contains(e.Command.ChatMessage.Username))
+            if (!Settings.AllowCommandsViaChannel || Settings.UserBlacklist.Contains(e.ChatMessage.Username))
                 return;
 
-            var msg = e.Command.ChatMessage;
-            var c = e.Command.CommandText.ToLower();
+            var msg = e.ChatMessage;
+            var c = e.Command.Name.ToLower();
             var args = e.Command.ArgumentsAsString;
             var response = HandleCommand(msg, c, args, false, out var dest);
             if (response.Length == 0)
                 return;
 
             if (dest == TwitchMessageDestination.Whisper)
-            {
-                client.SendWhisper(msg.Username, response);
-            }
+                LogWhisperUnsupported(msg.Username);
             else
-            {
-                var channel = e.Command.ChatMessage.Channel;
-                client.SendMessage(channel, response);
-            }
+                SendMessage(client, msg.Channel, response);
         }
 
-        private void Client_OnWhisperCommandReceived(object? sender, OnWhisperCommandReceivedArgs e)
+        private void Client_OnWhisperCommandReceived(OnWhisperCommandReceivedArgs e)
         {
-            if (!Settings.AllowCommandsViaWhisper || Settings.UserBlacklist.Contains(e.Command.WhisperMessage.Username))
+            if (!Settings.AllowCommandsViaWhisper || Settings.UserBlacklist.Contains(e.WhisperMessage.Username))
                 return;
 
-            var msg = e.Command.WhisperMessage;
-            var c = e.Command.CommandText.ToLower();
+            var msg = e.WhisperMessage;
+            var c = e.Command.Name.ToLower();
             var args = e.Command.ArgumentsAsString;
             var response = HandleCommand(msg, c, args, true, out _);
             if (response.Length == 0)
                 return;
 
-            client.SendWhisper(msg.Username, response);
+            LogWhisperUnsupported(msg.Username);
         }
 
         private string HandleCommand(TwitchLibMessage m, string c, string args, bool whisper, out TwitchMessageDestination dest)
         {
             bool sudo() => m is ChatMessage ch && (ch.IsBroadcaster || Settings.IsSudo(m.Username));
-            bool subscriber() => m is ChatMessage { IsSubscriber: true };
+            bool subscriber() => m is ChatMessage { UserDetail.IsSubscriber: true };
             LogUtil.LogInfo($"[Command] {m.Username}: {c} {args}", nameof(TwitchCrossBot));
 
             dest = TwitchMessageDestination.Disabled; // disable overwrite so responds in same area.
@@ -250,14 +272,14 @@ namespace SysBot.ACNHOrders.Twitch
             return false;
         }
 
-        private void Client_OnWhisperReceived(object? sender, OnWhisperReceivedArgs e)
+        private void Client_OnWhisperReceived(OnWhisperReceivedArgs e)
         {
             LogUtil.LogInfo($"[{client.TwitchUsername}] - @{e.WhisperMessage.Username}: {e.WhisperMessage.Message}", nameof(TwitchCrossBot));
             if (QueuePool.Count > 100)
             {
                 var removed = QueuePool[0];
                 QueuePool.RemoveAt(0); // First in, first out
-                client.SendMessage(Channel, $"Removed @{removed.DisplayName} from the waiting list: stale request.");
+                SendMessage(client, Channel, $"Removed @{removed.DisplayName} from the waiting list: stale request.");
             }
 
             var queueItem = QueuePool.FindLast(q => q.ID == ulong.Parse(e.WhisperMessage.UserId));
@@ -271,7 +293,7 @@ namespace SysBot.ACNHOrders.Twitch
             try
             {
                 var _ = AddToTradeQueue(queueItem, msg, out string message);
-                client.SendMessage(Channel, message);
+                SendMessage(client, Channel, message);
             }
 #pragma warning disable CA1031 // Do not catch general exception types
             catch (Exception ex)
@@ -285,7 +307,7 @@ namespace SysBot.ACNHOrders.Twitch
         {
             return message.Replace("{islandname}", Bot.TownName)
                 .Replace("{dodo}", Bot.DodoCode)
-                .Replace("{vcount}", Math.Min(0, Bot.VisitorList.VisitorCount - 1).ToString())
+                .Replace("{vcount}", (Bot.VisitorList.VisitorCount > 0 ? Bot.VisitorList.VisitorCount - 1 : 0).ToString()) // -1 for the host
                 .Replace("{visitorlist}", Bot.VisitorList.VisitorFormattedString)
                 .Replace("{villagerlist}", Bot.Villagers.LastVillagers)
                 .Replace("{user}", caller);
