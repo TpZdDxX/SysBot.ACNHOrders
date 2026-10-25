@@ -53,57 +53,32 @@ namespace SysBot.ACNHOrders
             {
                 bot.Log("Starting bot loop.");
 
-                var task = bot.RunAsync(cancel);
-                await task.ConfigureAwait(false);
-
-                bool attemptReconnect = false;
-
-                if (task.IsFaulted)
+                try
                 {
-                    if (task.Exception == null)
-                    {
-                        bot.Log("Bot has terminated due to an unknown error.");
-                    }
-                    else
-                    {
-                        bot.Log("Bot has terminated due to an error:");
-                        foreach (var ex in task.Exception.InnerExceptions)
-                        {
-                            bot.Log(ex.Message);
-                            var st = ex.StackTrace;
-                            if (st != null)
-                                bot.Log(st);
-                        }
-                    }
-                    attemptReconnect = false;
-                }
-                else
-                {
+                    await bot.RunAsync(cancel).ConfigureAwait(false);
                     bot.Log("Bot has terminated.");
-                   // if (config.DodoModeConfig.LimitedDodoRestoreOnlyMode) // don't restore ordermode crashes
-                   // {
-                        attemptReconnect = true;
-                        bot.Log("Please wait... Attempting to reconnect in 10 seconds.");
-                   // }
                 }
-
-                if (attemptReconnect)
+                catch (Exception ex) when (!cancel.IsCancellationRequested)
                 {
-                    await Task.Delay(10_000, cancel).ConfigureAwait(false);
-                    bot.Log("Bot is attempting a restart...");
-                    bot = new CrossBot(config);
-                    Globals.Bot = bot;
-
-                    await sys.Disconnect();
-                    sys = new SysCord(bot);
-                    Globals.Self = sys;
-                    bot.Log("Restarting Discord.");
-#pragma warning disable 4014
-                    Task.Run(() => sys.MainAsync(config.Token, cancel), cancel);
-#pragma warning restore 4014
+                    // Retry in-process instead of crashing; a crash means a fresh Discord login every cycle.
+                    bot.Log("Bot has terminated due to an error:");
+                    bot.Log(ex.Message);
+                    if (ex.StackTrace != null)
+                        bot.Log(ex.StackTrace);
+                    try { bot.Connection.Disconnect(); } catch { } // RunAsync skips this on error; not gated on Connected since USB never sets it
                 }
-                else
-                    break;
+
+                bot.Log("Please wait... Attempting to reconnect in 10 seconds.");
+                await Task.Delay(10_000, cancel).ConfigureAwait(false);
+                bot.Log("Bot is attempting a restart...");
+                var notifiers = bot.DodoNotifiers;
+                bot = new CrossBot(config);
+                foreach (var n in notifiers)
+                    bot.DodoNotifiers.Add(n);
+                Globals.Bot = bot;
+                TwitchCrossBot.Bot = bot;
+                // Reuse the existing Discord session; re-logging in on every bot restart burns Discord's 1000 identify/day limit.
+                sys.Bot = bot;
             }
         }
     }

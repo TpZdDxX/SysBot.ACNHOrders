@@ -15,7 +15,7 @@ namespace SysBot.ACNHOrders
     public sealed class SysCord
     {
         private readonly DiscordSocketClient _client;
-        private readonly CrossBot Bot;
+        public CrossBot Bot { private get; set; }
         public ulong Owner = ulong.MaxValue;
         public static bool ForwardersReady = false; // static because we don't need to reset forwarders on reconnect/crash
 

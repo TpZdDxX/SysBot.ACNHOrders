@@ -156,8 +156,17 @@ namespace SysBot.ACNHOrders
 
         public async Task<OverworldState> GetOverworldState(long[] jumps, CancellationToken token)
         {
-            ulong coord = await FollowMainPointer(jumps, token).ConfigureAwait(false);
-            return await GetOverworldState(coord, token).ConfigureAwait(false);
+            try
+            {
+                ulong coord = await FollowMainPointer(jumps, token).ConfigureAwait(false);
+                return await GetOverworldState(coord, token).ConfigureAwait(false);
+            }
+            catch (ArgumentException)
+            {
+                // The player pointer is invalid during loading screens/crashes and sys-botbase returns garbage for it.
+                // Treat that as "not loaded yet" so every wait loop keeps waiting instead of killing the bot.
+                return OverworldState.Unknown;
+            }
         }
 
         public async Task<OverworldState> GetOverworldState(ulong CoordinateAddress, CancellationToken token)

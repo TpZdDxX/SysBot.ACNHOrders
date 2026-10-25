@@ -1098,8 +1098,15 @@ namespace SysBot.ACNHOrders
         // Does the current RAM anchor match the one we've saved?
         private async Task<bool> DoesAnchorMatch(int anchorIndex, CancellationToken token)
         {
-            var anchorMemory = await ReadAnchor(token).ConfigureAwait(false);
-            return anchorMemory.AnchorBytes.SequenceEqual(Anchors.Anchors[anchorIndex].AnchorBytes);
+            try
+            {
+                var anchorMemory = await ReadAnchor(token).ConfigureAwait(false);
+                return anchorMemory.AnchorBytes.SequenceEqual(Anchors.Anchors[anchorIndex].AnchorBytes);
+            }
+            catch (ArgumentException) // garbage read while the game is still loading, see DodoPositionHelper.GetOverworldState
+            {
+                return false;
+            }
         }
 
         private async Task EnsureAnchorsAreInitialised(CancellationToken token)

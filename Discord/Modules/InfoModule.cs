@@ -58,10 +58,10 @@ namespace SysBot.ACNHOrders
 
         private static string GetBuildTime()
         {
-            var assembly = Assembly.GetEntryAssembly();
-            if (assembly == null)
+            var path = Environment.ProcessPath; // Assembly.Location is empty in single-file builds
+            if (path == null)
                 return DateTime.Now.ToString(@"yy-MM-dd\.hh\:mm");
-            return File.GetLastWriteTime(assembly.Location).ToString(@"yy-MM-dd\.hh\:mm");
+            return File.GetLastWriteTime(path).ToString(@"yy-MM-dd\.hh\:mm");
         }
     }
 }
