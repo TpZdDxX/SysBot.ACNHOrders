@@ -17,6 +17,8 @@ namespace SysBot.ACNHOrders
             BaseImage = SKBitmap.Decode(ImagePathTemplate) ?? throw new IOException($"Unable to load {ImagePathTemplate}");
             var typeface = SKTypeface.FromFile(FontPath) ?? throw new IOException($"Unable to load {FontPath}");
             DodoFont = new SKFont(typeface, BaseImage.Height * 0.4f * (fontPercentage/100f));
+            // Image left over from the last run still shows that run's dodo code
+            File.Delete(ImagePathOutput);
         }
 
         public string Draw(string dodo)
