@@ -5,6 +5,8 @@
     <TargetFrameworks>net10.0</TargetFrameworks>
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Keeps stack trace line numbers without shipping .pdb files -->
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,9 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources\InternalHexList.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\InternalHexList.txt" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,5 +47,13 @@
   <ItemGroup>
     <Folder Include="Bot\Injection\" />
   </ItemGroup>
+
+  <!-- SkiaSharp ships its native debug symbols (~96 MB) as a runtime asset, nobody running the bot needs them -->
+  <Target Name="RemoveNativeSymbols" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Extension)' == '.pdb'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 
 </Project>
