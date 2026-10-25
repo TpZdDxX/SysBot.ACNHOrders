@@ -45,7 +45,7 @@ namespace SysBot.ACNHOrders
 
                 // This makes commands get run on the task thread pool instead on the websocket read thread.
                 // This ensures long running logic can't block the websocket connection.
-                DefaultRunMode = RunMode.Sync,
+                DefaultRunMode = RunMode.Async,
 
                 // There's a few more properties you can set,
                 // for example, case-insensitive commands.
@@ -160,6 +160,12 @@ namespace SysBot.ACNHOrders
             await _commands.AddModulesAsync(assembly, _services).ConfigureAwait(false);
             // Subscribe a handler to see if a message invokes a command.
             _client.MessageReceived += HandleMessageAsync;
+            // Async commands finish after ExecuteAsync returns, so their errors only arrive here
+            _commands.CommandExecuted += async (_, context, result) =>
+            {
+                if (!result.IsSuccess && result.Error != CommandError.UnknownCommand)
+                    await context.Channel.SendMessageAsync(result.ErrorReason).ConfigureAwait(false);
+            };
         }
 
         public async Task Disconnect()
@@ -298,16 +304,7 @@ namespace SysBot.ACNHOrders
             await Log(new LogMessage(LogSeverity.Info, "Command", $"Executing command from {guild}#{msg.Channel.Name}:@{msg.Author.Username}. Content: {msg}")).ConfigureAwait(false);
             var result = await _commands.ExecuteAsync(context, pos, _services).ConfigureAwait(false);
 
-            if (result.Error == CommandError.UnknownCommand)
-                return false;
-
-            // Uncomment the following lines if you want the bot
-            // to send a message if it failed.
-            // This does not catch errors from commands with 'RunMode.Async',
-            // subscribe a handler for '_commands.CommandExecuted' to see those.
-            if (!result.IsSuccess)
-                await msg.Channel.SendMessageAsync(result.ErrorReason).ConfigureAwait(false);
-            return true;
+            return result.Error != CommandError.UnknownCommand;
         }
 
         private async Task MonitorStatusAsync(CancellationToken token)
