@@ -78,6 +78,13 @@ namespace SysBot.ACNHOrders
 
         private static Task Log(LogMessage msg)
         {
+            // Discord asks for this every few hours and the session resumes, so the stack trace is just noise
+            if (msg.Exception is GatewayReconnectException)
+                return Task.CompletedTask;
+            // Forwarding each log line to Discord hits this constantly, and Discord.Net already waits and resends
+            if (msg.Source == "Rest" && msg.Message?.StartsWith("Rate limit triggered") == true)
+                return Task.CompletedTask;
+
             Console.ForegroundColor = msg.Severity switch
             {
                 LogSeverity.Critical => ConsoleColor.Red,
@@ -107,6 +114,12 @@ namespace SysBot.ACNHOrders
 
             // Login and connect.
             await _client.LoginAsync(TokenType.Bot, apiToken).ConfigureAwait(false);
+
+            // Connecting without knowing the count could spend a login the bot can't afford
+            SessionStartLimit? limit;
+            while ((limit = await GetSessionStartLimitAsync().ConfigureAwait(false)) == null)
+                await Task.Delay(30_000, token).ConfigureAwait(false);
+            await WaitIfLowOnLoginsAsync(limit, token).ConfigureAwait(false);
             await _client.StartAsync().ConfigureAwait(false);
             _client.Ready += ClientReady;
 
@@ -127,8 +140,70 @@ namespace SysBot.ACNHOrders
             await MonitorStatusAsync(token).ConfigureAwait(false);
         }
 
+        private async Task<SessionStartLimit?> GetSessionStartLimitAsync()
+        {
+            try
+            {
+                return (await _client.GetBotGatewayAsync().ConfigureAwait(false)).SessionStartLimit;
+            }
+            catch (Exception e)
+            {
+                await Log(new LogMessage(LogSeverity.Warning, "Gateway", "Couldn't read the Discord login limit.", e)).ConfigureAwait(false);
+                return null;
+            }
+        }
+
+        // Running out of logins gets the bot token reset, so keep a buffer and stay offline until the daily reset
+        private async Task<bool> WaitIfLowOnLoginsAsync(SessionStartLimit? limit, CancellationToken token)
+        {
+            if (limit is not { Remaining: < 100 })
+                return false;
+
+            // Stop first so Discord.Net can't reconnect while the warning is sent, and its reconnect loop ends
+            await _client.StopAsync().ConfigureAwait(false);
+
+            var message = $"Only {limit.Remaining}/{limit.Total} Discord logins left, going offline for {TimeSpan.FromMilliseconds(limit.ResetAfter):hh\\:mm\\:ss} until the limit resets.";
+            await Log(new LogMessage(LogSeverity.Warning, "Gateway", message)).ConfigureAwait(false);
+
+            // REST works without a gateway connection, so this still reaches Discord before connecting
+            foreach (var channelId in Bot.Config.LoggingChannels)
+            {
+                try
+                {
+                    if (await _client.Rest.GetChannelAsync(channelId).ConfigureAwait(false) is IMessageChannel channel)
+                        await channel.SendMessageAsync(message).ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    await Log(new LogMessage(LogSeverity.Warning, "Gateway", $"Couldn't send the login limit warning to {channelId}.", e)).ConfigureAwait(false);
+                }
+            }
+
+            await Task.Delay(limit.ResetAfter, token).ConfigureAwait(false);
+            return true;
+        }
+
         private async Task ClientReady()
         {
+            // Ready only fires on a fresh login, not a resume, so each one used a session start
+            // Retrying and the wait can take a while, so keep them off the gateway task
+            _ = Task.Run(async () =>
+            {
+                SessionStartLimit? limit;
+                while ((limit = await GetSessionStartLimitAsync().ConfigureAwait(false)) == null)
+                    await Task.Delay(30_000).ConfigureAwait(false);
+
+                var used = limit.Total - limit.Remaining;
+                var message = $"{limit.Remaining}/{limit.Total} Discord logins left, resets in {TimeSpan.FromMilliseconds(limit.ResetAfter):hh\\:mm\\:ss}.";
+                if (used > 500)
+                    await Log(new LogMessage(LogSeverity.Warning, "Gateway", $"{message} {used} logins used already, something is restarting or reconnecting the bot too often.")).ConfigureAwait(false);
+                else
+                    await Log(new LogMessage(LogSeverity.Info, "Gateway", message)).ConfigureAwait(false);
+
+                if (await WaitIfLowOnLoginsAsync(limit, CancellationToken.None).ConfigureAwait(false))
+                    await _client.StartAsync().ConfigureAwait(false);
+            });
+
             if (ForwardersReady)
                 return;
             ForwardersReady = true;
