@@ -84,16 +84,40 @@ public sealed class SwitchSocketAsync(IWirelessConnectionConfig cfg) : SwitchSoc
         return i;
     }
 
+    // Bot loop and Discord commands share this socket, so a reply could be read by the wrong caller
+    private readonly SemaphoreSlim CommandLock = new SemaphoreSlim(1, 1);
+
     public async Task<int> SendAsync(byte[] buffer, CancellationToken token)
     {
-        return await Task.Run(() => Connection.Send(buffer), token).ConfigureAwait(continueOnCapturedContext: false);
+        await CommandLock.WaitAsync(token).ConfigureAwait(continueOnCapturedContext: false);
+        try
+        {
+            return await Task.Run(() => Connection.Send(buffer), token).ConfigureAwait(continueOnCapturedContext: false);
+        }
+        finally
+        {
+            CommandLock.Release();
+        }
+    }
+
+    private async Task<int> SendAndReadAsync(byte[] command, byte[] buffer, CancellationToken token)
+    {
+        await CommandLock.WaitAsync(token).ConfigureAwait(continueOnCapturedContext: false);
+        try
+        {
+            await Task.Run(() => Connection.Send(command), token).ConfigureAwait(continueOnCapturedContext: false);
+            return Read(buffer);
+        }
+        finally
+        {
+            CommandLock.Release();
+        }
     }
 
     private async Task<byte[]> ReadBytesFromCmdAsync(byte[] cmd, int length, CancellationToken token)
     {
-        await SendAsync(cmd, token).ConfigureAwait(continueOnCapturedContext: false);
         byte[] buffer = new byte[length * 2 + 1];
-        Read(buffer);
+        await SendAndReadAsync(cmd, buffer, token).ConfigureAwait(continueOnCapturedContext: false);
         return Decoder.ConvertHexByteStringToBytes(buffer);
     }
 
@@ -215,9 +239,8 @@ public sealed class SwitchSocketAsync(IWirelessConnectionConfig cfg) : SwitchSoc
 
     public async Task<byte[]> ReadRaw(byte[] command, int length, CancellationToken token)
     {
-        await SendAsync(command, token).ConfigureAwait(continueOnCapturedContext: false);
         byte[] buffer = new byte[length];
-        Read(buffer);
+        await SendAndReadAsync(command, buffer, token).ConfigureAwait(continueOnCapturedContext: false);
         return buffer;
     }
 
@@ -253,8 +276,7 @@ public sealed class SwitchSocketAsync(IWirelessConnectionConfig cfg) : SwitchSoc
     public async Task<byte[]> PixelPeek(CancellationToken token)
     {
         byte[] buffer = new byte[1024001];
-        await SendAsync(SwitchCommand.PixelPeek(), token).ConfigureAwait(continueOnCapturedContext: false);
-        int len = Read(buffer);
+        int len = await SendAndReadAsync(SwitchCommand.PixelPeek(), buffer, token).ConfigureAwait(continueOnCapturedContext: false);
         byte[] bytes = buffer.Take(len).ToArray();
         return Decoder.ConvertHexByteStringToBytes(bytes);
     }
