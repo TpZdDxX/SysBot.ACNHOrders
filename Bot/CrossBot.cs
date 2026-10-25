@@ -248,6 +248,8 @@ namespace SysBot.ACNHOrders
             {
                 byte[] bytes = await Connection.ReadBytesAsync((uint)OffsetHelper.DodoAddress, 0x5, token).ConfigureAwait(false);
                 DodoCode = Encoding.UTF8.GetString(bytes, 0, 5);
+                if (DodoPosition.IsDodoValid(DodoCode))
+                    LogUtil.LogInfo($"Dodo code for {TownName} is {DodoCode}.", Config.IP);
 
                 if (DodoPosition.IsDodoValid(DodoCode) && Config.DodoModeConfig.EchoDodoChannels.Count > 0)
                     await AttemptEchoHook($"[{DateTime.Now:yyyy-MM-dd hh:mm:ss tt}] The Dodo code for {TownName} has updated, the new Dodo code is: {DodoCode}.", Config.DodoModeConfig.EchoDodoChannels, token).ConfigureAwait(false);
