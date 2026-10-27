@@ -14,7 +14,7 @@ namespace SysBot.ACNHOrders
             // Set up logging for Console Window
             LogUtil.Forwarders.Add(Logger);
             static void Logger(string msg, string identity) => Console.WriteLine(GetMessage(msg, identity));
-            static string GetMessage(string msg, string identity) => $"> [{DateTime.Now:hh:mm:ss}] - {identity}: {msg}";
+            static string GetMessage(string msg, string identity) => $"> [{DateTime.Now:hh:mm:ss tt}] - {identity}: {msg}";
 
             var bot = new CrossBot(config);
 

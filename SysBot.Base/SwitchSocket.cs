@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net.Sockets;
 
 namespace SysBot.Base;
@@ -28,7 +29,7 @@ public abstract class SwitchSocket : IConsoleConnection
     {
         Type = type;
         Protocol = protocol;
-        Connection = new Socket(type, protocol);
+        InitializeSocket();
         Info = wi;
         Name = (Label = wi.IP);
     }
@@ -54,8 +55,11 @@ public abstract class SwitchSocket : IConsoleConnection
 
     public abstract void Disconnect();
 
+    [MemberNotNull(nameof(Connection))]
     public void InitializeSocket()
     {
         Connection = new Socket(Type, Protocol);
+        // The Switch going quiet this long means the Wi-Fi link is dead, not a slow reply
+        Connection.ReceiveTimeout = 60_000;
     }
 }

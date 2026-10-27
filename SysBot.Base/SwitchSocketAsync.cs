@@ -105,8 +105,22 @@ public sealed class SwitchSocketAsync(IWirelessConnectionConfig cfg) : SwitchSoc
         await CommandLock.WaitAsync(token).ConfigureAwait(continueOnCapturedContext: false);
         try
         {
-            await Task.Run(() => Connection.Send(command), token).ConfigureAwait(continueOnCapturedContext: false);
-            return Read(buffer);
+            try
+            {
+                await Task.Run(() => Connection.Send(command), token).ConfigureAwait(continueOnCapturedContext: false);
+                return Read(buffer);
+            }
+            // A late reply would be read by the next command, so ask again on a fresh socket
+            catch (SocketException e) when (e.SocketErrorCode == SocketError.TimedOut)
+            {
+                LogError("Switch stopped replying, reconnecting.");
+                Connection.Close();
+                InitializeSocket();
+                Connected = false;
+                Connect();
+                await Task.Run(() => Connection.Send(command), token).ConfigureAwait(continueOnCapturedContext: false);
+                return Read(buffer);
+            }
         }
         finally
         {

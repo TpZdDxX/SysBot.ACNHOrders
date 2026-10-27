@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Threading;
@@ -16,7 +17,11 @@ namespace SysBot.ACNHOrders
         {
             string configPath;
 
-			Console.WriteLine("Starting up...");
+			// Discord channel and user names often have emoji, which the default code page prints as ?
+			Console.OutputEncoding = System.Text.Encoding.UTF8;
+			// The SDK appends the git commit as "+<sha>", so this names the exact build
+			var version = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+			Console.WriteLine($"Starting up build {version[(version.IndexOf('+') + 1)..]}...");
             if (args.Length > 0) 
             {
                 if (args.Length > 1) 
