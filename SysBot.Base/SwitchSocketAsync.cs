@@ -52,8 +52,12 @@ public sealed class SwitchSocketAsync(IWirelessConnectionConfig cfg) : SwitchSoc
     public override void Disconnect()
     {
         Log("Disconnecting from device...");
-        Connection.Shutdown(SocketShutdown.Both);
-        Connection.BeginDisconnect(reuseSocket: true, DisconnectCallback, Connection);
+        // A failed reconnect leaves a fresh socket that was never connected, and Shutdown throws on it
+        if (Connection.Connected)
+        {
+            Connection.Shutdown(SocketShutdown.Both);
+            Connection.BeginDisconnect(reuseSocket: true, DisconnectCallback, Connection);
+        }
         Connected = false;
         Log("Disconnected! Resetting Socket.");
         InitializeSocket();
