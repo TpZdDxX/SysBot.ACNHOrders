@@ -118,10 +118,23 @@ public sealed class SwitchSocketAsync(IWirelessConnectionConfig cfg) : SwitchSoc
             catch (SocketException e) when (e.SocketErrorCode == SocketError.TimedOut)
             {
                 LogError("Switch stopped replying, reconnecting.");
-                Connection.Close();
-                InitializeSocket();
-                Connected = false;
-                Connect();
+                // Keep trying while the Switch is off the network, e.g. a Wi-Fi drop
+                while (true)
+                {
+                    Connection.Close();
+                    InitializeSocket();
+                    Connected = false;
+                    try
+                    {
+                        Connect();
+                        break;
+                    }
+                    catch (SocketException ex)
+                    {
+                        LogError($"Reconnect failed ({ex.SocketErrorCode}), retrying in 10 seconds.");
+                        await Task.Delay(10_000, token).ConfigureAwait(continueOnCapturedContext: false);
+                    }
+                }
                 await Task.Run(() => Connection.Send(command), token).ConfigureAwait(continueOnCapturedContext: false);
                 return Read(buffer);
             }
